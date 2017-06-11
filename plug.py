@@ -65,9 +65,7 @@ def _get_plugin_func(plugname, funcname):
     :param funcname:
     :return:
     """
-    if funcname in dir(PLUGINS[plugname]):
-        return getattr(PLUGINS[plugname], funcname)
-    return None
+    return getattr(PLUGINS[plugname], funcname, None)
 
 
 def get_plugin_app(plugname, parent):
