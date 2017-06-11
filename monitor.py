@@ -16,6 +16,14 @@ if __debug__:
 from config import config
 
 
+def tagsymbol(tag):
+    symbol = re.match('\$(.+)_name;', tag, re.I)
+    if symbol:
+        return symbol.group(1).lower()
+    else:
+        return tag.lower()
+
+
 if platform=='darwin':
     from AppKit import NSWorkspace
     from Foundation import NSSearchPathForDirectoriesInDomains, NSApplicationSupportDirectory, NSUserDomainMask
@@ -225,6 +233,15 @@ class EDLogs(FileSystemEventHandler):
     def running(self):
         return self.thread and self.thread.is_alive()
 
+    def add_cargo(self, symbol, count=1):
+        symbol = tagsymbol(symbol)
+        stock = self.state['Cargo'][symbol]
+        stock += count
+        if stock > 0:
+            self.state['Cargo'][symbol] = stock
+        else:
+            del self.state['Cargo'][symbol]
+
     def on_created(self, event):
         # watchdog callback, e.g. client (re)started.
         if not event.is_directory and basename(event.src_path).startswith('Journal.') and basename(event.src_path).endswith('.log'):
@@ -376,8 +393,7 @@ class EDLogs(FileSystemEventHandler):
                     if module.get('Slot') == 'PaintJob' and module.get('Item'):
                         self.state['PaintJob'] = module['Item'].lower()
             elif entry['event'] in ['ModuleBuy', 'ModuleSell'] and entry['Slot'] == 'PaintJob':
-                symbol = re.match('\$(.+)_name;', entry.get('BuyItem', ''))
-                self.state['PaintJob'] = symbol and symbol.group(1).lower() or entry.get('BuyItem', '')
+                self.state['PaintJob'] = tagsymbol(entry.get('BuyItem', ''))
             elif entry['event'] in ['Undocked']:
                 self.station = None
             elif entry['event'] in ['Location', 'FSDJump', 'Docked']:
@@ -406,16 +422,20 @@ class EDLogs(FileSystemEventHandler):
                 self.live = True	# First event in 2.3
                 self.state['Cargo'] = defaultdict(int)
                 self.state['Cargo'].update({ x['Name']: x['Count'] for x in entry['Inventory'] })
-            elif entry['event'] in ['CollectCargo', 'MarketBuy', 'MiningRefined']:
-                self.state['Cargo'][entry['Type']] += entry.get('Count', 1)
-            elif entry['event'] in ['EjectCargo', 'MarketSell']:
-                self.state['Cargo'][entry['Type']] -= entry.get('Count', 1)
-                if self.state['Cargo'][entry['Type']] <= 0:
-                    self.state['Cargo'].pop(entry['Type'])
+            elif entry['event'] in ['CollectCargo', 'MarketBuy', 'MiningRefined', 'PowerplayCollect', 'BuyDrones']:
+                self.add_cargo(entry['Type'], entry.get('Count', 1))
+            elif entry['event'] in ['EjectCargo', 'MarketSell', 'PowerplayDeliver', 'SellDrones']:
+                self.add_cargo(entry['Type'], -entry.get('Count', 1))
+            elif entry['event'] == 'MissionAccepted':
+                if entry['Name'].split('_')[1:2] == ['Delivery']:
+                    self.add_cargo(entry['Commodity'], entry.get('Count', 1))
             elif entry['event'] == 'MissionCompleted':
+                missiontype = entry['Name'].split('_')
+                if len(missiontype)>1 and missiontype[1] in ['Delivery', 'Collect']:
+                    self.add_cargo(entry['Commodity'], -entry.get('Count', 1))
                 # Not sure whether the names for 'CommodityReward' are from the same namespace as the 'Cargo' event.
                 for reward in entry.get('CommodityReward', []):
-                    self.state['Cargo'][reward['Name'].lower()] += reward.get('Count', 1)
+                    self.add_cargo(reward['Name'].lower(), reward.get('Count', 1))
 
             elif entry['event'] == 'Materials':
                 for category in ['Raw', 'Manufactured', 'Encoded']:
