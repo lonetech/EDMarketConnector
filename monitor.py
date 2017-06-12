@@ -158,6 +158,7 @@ class EDLogs(FileSystemEventHandler):
             'ShipIdent'    : None,
             'ShipName'     : None,
             'ShipType'     : None,
+            'Missions'     : dict(),
         }
 
     def set_callback(self, name, callback):
@@ -344,6 +345,7 @@ class EDLogs(FileSystemEventHandler):
                     'ShipIdent'    : None,
                     'ShipName'     : None,
                     'ShipType'     : None,
+                    'Missions'     : dict(),
                 }
             elif entry['event'] == 'LoadGame':
                 self.live = True
@@ -427,9 +429,11 @@ class EDLogs(FileSystemEventHandler):
             elif entry['event'] in ['EjectCargo', 'MarketSell', 'PowerplayDeliver', 'SellDrones']:
                 self.add_cargo(entry['Type'], -entry.get('Count', 1))
             elif entry['event'] == 'MissionAccepted':
+                self.state['Missions'][entry['MissionID']] = entry
                 if entry['Name'].split('_')[1:2] == ['Delivery']:
                     self.add_cargo(entry['Commodity'], entry.get('Count', 1))
             elif entry['event'] == 'MissionCompleted':
+                oldmission = self.state['Missions'].pop(entry['MissionID'], None)
                 missiontype = entry['Name'].split('_')
                 if len(missiontype)>1 and missiontype[1] in ['Delivery', 'Collect']:
                     self.add_cargo(entry['Commodity'], -entry.get('Count', 1))
