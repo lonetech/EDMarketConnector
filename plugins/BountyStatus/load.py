@@ -8,6 +8,9 @@ import Tkinter as tk
 import myNotebook as nb
 from config import config
 
+#import l10n
+import locale
+
 from collections import defaultdict
 import webbrowser
 from operator import itemgetter
@@ -35,12 +38,19 @@ reportfields = {
 #    "entry.1112079590": "Transaction count",
 }
 
+def stringFromNumber(num):
+    # Seems the formatting is broken and tries to decode as UTF-8
+    # but the string produced is latin1. 
+    encoding = locale.getpreferredencoding()
+    return "{:n}".format(num).decode(encoding)
+
 # Identical functions, distinct sources
 def update_treeview(source):
     entries = sorted(source.iteritems(), key=itemgetter(1), reverse=True)
     treeview.set_children(viewroot)
     for faction, amount in entries:
-        child=treeview.insert(viewroot, "end", text=faction, values=[str(amount)])
+        child=treeview.insert(viewroot, "end", text=faction, 
+            values=[stringFromNumber(amount)])
 
 # Functions called by EDMC
 def plugin_start():
@@ -51,9 +61,10 @@ def plugin_app(parent):
     treeview = ttk.Treeview(parent, columns=2)
     treeview.heading("#0", text="Faction")
     treeview.heading(0, text="Credits")
+    treeview.column(0, anchor=tk.E)     # right align numbers
     
-    bounties["foo"] = 123
-    update_treeview(bounties)
+    #bounties["foo"] = 12345678
+    #update_treeview(bounties)
     #treeview.set_children("", "Recent bounties", "Recent combat bonds")
     return treeview
 
@@ -71,7 +82,13 @@ def journal_entry(cmdr, system, station, entry, state):
     elif entry['event']==u"Bounty":
         # Count a bounty
         victims[entry['VictimFaction']] += 1
-        for subentry in entry['Rewards']:
+        try:
+            rewards = entry['Rewards']
+        except KeyError:
+            # Skimmer bounties gave single-faction bounty format
+            # The three I observed had the same Faction and VictimFaction
+            rewards = [entry]
+        for subentry in rewards:
             bounties[subentry['Faction']] += subentry['Reward']
         update_treeview(bounties)
     elif entry['event']==u"FactionKillBond":
